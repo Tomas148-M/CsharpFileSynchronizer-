@@ -10,6 +10,7 @@ namespace CsharpFileSynchronizer
     {
         static void Main(string[] args)
         {
+
         }
     }
 }
