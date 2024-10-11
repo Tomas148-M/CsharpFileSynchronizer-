@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CsharpFileSynchronizer
@@ -32,10 +33,6 @@ namespace CsharpFileSynchronizer
                     // Delete the directory and its contents
                     Directory.Delete(fullPath, true); // 'true' specifies recursive deletion
                     _logger.LogInformation($"Directory deleted: {relativePath}");
-                }
-                else
-                {
-                    _logger.LogInformation($"Directory does not exist: {relativePath}");
                 }
             }
             catch (Exception ex)
@@ -101,32 +98,52 @@ namespace CsharpFileSynchronizer
 
             try
             {
-                // Attempt to copy the file from source to backup
-                File.Copy(sourceFile, backupFile, true); // Overwrite if it exists
-                _logger.LogInformation($"File {sourceFile} was successfully copied to {backupFile}.");
+                //// Attempt to copy the file from source to backup
+                //File.Copy(sourceFile, backupFile, true); // Overwrite if it exists
+
+                //_logger.LogInformation($"File {sourceFile} was successfully copied to {backupFile}.");
+                // Pokusíme se kopírovat soubor, dokud nebude stabilní
+                const int maxRetries = 100;
+                const int waitIntervalMs = 100;
+
+                int attempts = 0;
+
+                if (IsFileReady(sourceFile))
+                {
+                    File.Copy(sourceFile, backupFile, true); // Přepíšeme, pokud již existuje
+                }
+                else
+                {
+                    _logger.LogInformation($"File changing");
+
+                    while (attempts < maxRetries)
+                    {
+                        if (IsFileStable(sourceFile))
+                        {
+                            // Soubor je stabilní, můžeme jej zkopírovat
+                            File.Copy(sourceFile, backupFile, true); // Přepíšeme, pokud již existuje
+
+                            _logger.LogInformation($"File {sourceFile} was successfully copied to {backupFile}.");
+                            break; // Ukončíme smyčku, protože kopírování proběhlo úspěšně
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"File {sourceFile} is not stable, retrying in {waitIntervalMs / 1000} seconds...");
+                            Thread.Sleep(waitIntervalMs); // Počkáme určený interval
+                            attempts++;
+                        }
+                    }
+
+                    // Pokud po maximálním počtu pokusů nebyl soubor stabilní
+                    if (attempts == maxRetries)
+                    {
+                        _logger.LogError($"File {sourceFile} could not be copied after {maxRetries} attempts.");
+                    }
+                }
             }
             catch (IOException ex)
             {
-                _logger.LogError($"Failure during the copying of {sourceFile}: {ex.Message}");
-                _logger.LogError("Attempting to copy file again after size stability check...");
-
-                //// Perform size stability check
-                //if (IsFileStable(sourceFile))
-                //{
-                //    try
-                //    {
-                //        File.Copy(sourceFile, backupFile, true); // Retry copying the file after stability check
-                //        _logger.LogInformation($"File {sourceFile} was successfully copied to {backupFile} after stability check.");
-                //    }
-                //    catch (IOException retryEx)
-                //    {
-                //        _logger.LogInformation($"Copy failed again: {retryEx.Message}");
-                //    }
-                //}
-                //else
-                //{
-                //    _logger.LogInformation($"File {sourceFile} is still unstable, copying aborted.");
-                //}
+               
             }
         }
 
@@ -184,6 +201,46 @@ namespace CsharpFileSynchronizer
 
             // Pokud cesta není pod základní cestou, vrátí originální cestu
             return filePath;
+        }
+
+        public bool IsFileReady(string filePath)
+        {
+            try
+            {
+                using (FileStream stream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    return true; // Pokud se stream otevře, soubor je připravený ke kopírování.
+                }
+            }
+            catch (IOException)
+            {
+                return false; // Soubor je stále používán a není připraven ke kopírování.
+            }
+        }
+
+        // Kontrola, zda je soubor stabilní (jeho velikost se nezmění během intervalu)
+        private bool IsFileStable(string filePath, int checkIntervalMs = 100)
+        {
+            try
+            {
+                // Získáme počáteční velikost souboru
+                long initialSize = new FileInfo(filePath).Length;
+
+                // Počkáme určený interval (např. 1 sekundu)
+                Thread.Sleep(checkIntervalMs);
+
+                // Znovu zkontrolujeme velikost souboru
+                long newSize = new FileInfo(filePath).Length;
+
+                // Pokud se velikost nezměnila, soubor je stabilní
+                return initialSize == newSize;
+            }
+            catch (IOException ex)
+            {
+                // Pokud došlo k chybě při přístupu k souboru, vrátíme false (soubor není stabilní)
+                _logger.LogError(ex, $"Error accessing file {filePath}.");
+                return false;
+            }
         }
     }
 }
