@@ -14,7 +14,8 @@ namespace CsharpFileSynchronizer
         private string _source;
         private string _backup;
         private FileHelper _fileHelper;
-       
+        private bool synchronizationNeeded = false;
+
 
         public FileSynchronizer(ILogger<Logger> logger, string source, string backup) 
         {
@@ -42,7 +43,6 @@ namespace CsharpFileSynchronizer
 
         public void SyncDirectories()
         {
-            var synchronizationNeeded = false;
             List<string> sourceFolder = _fileHelper.GetAllDirectories(_source);
             List<string> backupFolders = _fileHelper.GetAllDirectories(_backup);
 
@@ -66,16 +66,11 @@ namespace CsharpFileSynchronizer
             {
                 _fileHelper.RemoveDirectory(_backup,folder);
             }
-            if (synchronizationNeeded)
-            {
-                _logger.LogInformation("Synchronization complete.");
-            }
         }
 
             // Synchronization of all files
         public void SyncFiles()
         {
-            var synchronizationNeeded = false;
             // Get all files from source and backup directories
             //HashSet<string> sourceFiles = GetAllFiles(_source);
             //HashSet<string> backupFiles = GetAllFiles(_backup);
@@ -109,11 +104,6 @@ namespace CsharpFileSynchronizer
             {
                 _fileHelper.RemoveFile(_backup, file);
             }
-
-            if (synchronizationNeeded)
-            {
-                _logger.LogInformation("Synchronization complete.");
-            }
         }
 
         // Method to check if a file needs to be updated
@@ -138,6 +128,11 @@ namespace CsharpFileSynchronizer
         {
             SyncDirectories();
             SyncFiles();
+            if (synchronizationNeeded)
+            {
+                _logger.LogInformation("Synchronization complete.");
+                synchronizationNeeded = false;
+            }
         }
 
         // Method to synchronize folders
